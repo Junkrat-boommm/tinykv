@@ -16,8 +16,9 @@ package raft
 
 import (
 	"errors"
-
+	"github.com/pingcap-incubator/tinykv/log"
 	pb "github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
+	"math/rand"
 )
 
 // None is a placeholder node ID used when there is no leader.
@@ -141,7 +142,7 @@ type Raft struct {
 
 	// leadTransferee is id of the leader transfer target when its value is not zero.
 	// Follow the procedure defined in raft thesis 3.10.
-	leadTransferee uint64
+	leadTransferee uint64 //using in configuration change
 
 	// Only one conf change may be pending (in the log, but not yet
 	// applied) at a time. This is enforced via PendingConfIndex, which
@@ -157,6 +158,9 @@ type Raft struct {
 	// number of ticks since it reached last heartbeatTimeout.
 	// only leader keeps heartbeatElapsed.
 	heartbeatElapsed int
+
+	lastIndex uint64
+	lastTerm uint64
 }
 
 // newRaft return a raft peer with the given config
@@ -165,49 +169,222 @@ func newRaft(c *Config) *Raft {
 		panic(err.Error())
 	}
 	// Your Code Here (2A).
-	return nil
+
+	raft := &Raft{
+		id: c.ID,
+		Term: None,
+		Vote: None,
+		RaftLog: newLog(c.Storage),
+		Prs: make(map[uint64]*Progress),
+		State: StateFollower,
+		// votes records
+		votes: make(map[uint64]bool), // reset while becoming candidate
+		// msgs need to send
+		msgs: make([]pb.Message, 0),
+		// the leader id
+		Lead: None,
+		// heartbeat interval
+		heartbeatTimeout: c.HeartbeatTick,
+		// baseline of election interval
+		electionTimeout: c.ElectionTick,
+		// randomizedElectionTimeout is a random number between
+		randomizedElectionTimeout: 0, // set while becoming candidatelue is not zero.
+
+		leadTransferee: 0, //using in configuration change
+
+		PendingConfIndex: None,
+
+		electionElapsed: 0,
+
+		heartbeatElapsed: 0,
+	}
+
+	return raft
 }
 
 // sendAppend sends an append RPC with new entries (if any) and the
 // current commit index to the given peer. Returns true if a message was sent.
 func (r *Raft) sendAppend(to uint64) bool {
 	// Your Code Here (2A).
-	return false
+	// without snapshot in 2A
+	if prs := r.Prs[to]; prs != nil {
+		//matchIndex := prs.Match
+		nextIndex := prs.Next
+		offset := r.RaftLog.getOffset()
+		if nextIndex > r.lastIndex || nextIndex < offset {return false}
+		var entries []*pb.Entry
+		for i := nextIndex; i < r.lastIndex; i++ {
+			entries = append(entries, &r.RaftLog.entries[i])
+		}
+		//entries := r.RaftLog.getEntries(nextIndex, r.lastIndex)
+		if entries == nil || len(entries) == 0 {return false}
+		r.Send(pb.Message{To: to, MsgType: pb.MessageType_MsgAppend, Index: r.lastIndex, LogTerm: r.lastTerm, Commit: r.RaftLog.committed})
+		log.Info("[sendAppend] from: %v, to: %v, entries: [%v:%v], lastterm: %v Commit: %v", r.id, to, nextIndex, r.lastIndex, r.lastTerm, r.RaftLog)
+	} else {return false}
+	return true
 }
 
 // sendHeartbeat sends a heartbeat RPC to the given peer.
 func (r *Raft) sendHeartbeat(to uint64) {
 	// Your Code Here (2A).
+	// If you need to send out a message just push it to `raft.Raft.msgs` and all messages the raft received will be pass to `raft.Raft.Step()`
+	m := pb.Message{
+		To: to,
+		//From: r.id,
+		//Term: r.Term,
+		MsgType: pb.MessageType_MsgHeartbeat,
+		Commit: r.RaftLog.committed,// To allow followers to submit logs
+	}
+	r.Send(m)
 }
 
+// where is sendRequestVote, send when handling msg_hug
+
 // tick advances the internal logical clock by a single tick.
+// using for charging if the node need to do something, just like a timer. It will be called every clock
 func (r *Raft) tick() {
 	// Your Code Here (2A).
+	switch r.State {
+	case StateLeader:
+		r.heartbeatElapsed ++
+		if r.heartbeatElapsed >= r.heartbeatTimeout {// need to send heartbeat
+			r.heartbeatTimeout = 0
+			r.Step(pb.Message{From: r.id, MsgType: pb.MessageType_MsgBeat})// don't go over the network
+		}
+	case StateFollower :
+		r.heartbeatElapsed ++
+		//r.electionElapsed ++
+		if r.heartbeatElapsed >= r.randomizedElectionTimeout {// need to re-selection
+			r.heartbeatElapsed = 0
+			r.electionElapsed = 0
+			r.Step(pb.Message{From: r.id, MsgType: pb.MessageType_MsgHup})
+		}
+	case StateCandidate:
+		r.electionTimeout ++
+		if r.electionElapsed > r.randomizedElectionTimeout {
+			r.electionElapsed = 0
+			r.Step(pb.Message{From: r.id, MsgType: pb.MessageType_MsgHup})
+		}
+	}
 }
+
+
 
 // becomeFollower transform this peer's state to Follower
 func (r *Raft) becomeFollower(term uint64, lead uint64) {
 	// Your Code Here (2A).
+	r.Term = term
+	r.Lead = lead
+	r.State = StateFollower
+	r.resetTimeout()
+	log.Infof("[become follower] id: %v, term: %v", r.id, r.Term)
 }
 
 // becomeCandidate transform this peer's state to candidate
 func (r *Raft) becomeCandidate() {
 	// Your Code Here (2A).
+	r.Term += 1
+	//r.votes = 0 //reset vote
+	r.Vote = r.id // vote for itself
+	//clear the votes map
+	for i, _ := range r.votes{
+		r.votes[i] = false
+	}
+	// TODO
+	r.State = StateCandidate
+	r.resetTimeout()
+	log.Infof("[become candidate] id: %v, term: %v", r.id, r.Term)
 }
 
 // becomeLeader transform this peer's state to leader
 func (r *Raft) becomeLeader() {
 	// Your Code Here (2A).
+	r.resetTimeout()
+	r.State = StateLeader
+	log.Infof("[become candidate] id: %v, term: %v", r.id, r.Term)
+}
+
+func (r *Raft) resetTimeout() {
+	r.electionElapsed, r.heartbeatElapsed = 0, 0
+	if r.State == StateCandidate {
+		r.randomizedElectionTimeout = r.electionElapsed + rand.Intn(r.electionElapsed)
+	}
 }
 
 // Step the entrance of handle message, see `MessageType`
 // on `eraftpb.proto` for what msgs should be handled
+func (r *Raft) StepLeader(m pb.Message) error {
+	return nil
+}
+
+func (r *Raft) StepFollower(m pb.Message) error {
+	return nil
+}
+
+func (r *Raft) StepCandidate(m pb.Message) error {
+	return nil
+}
+
+
+func (r *Raft) Send(m pb.Message) {
+	//if &m == nil {return}
+	m.From = r.id
+	m.Term = r.Term
+	r.msgs = append(r.msgs, m)
+}
+
+// charge if the log is updated
+func (r *Raft) IsUpdated(m pb.Message) bool {
+	if ((r.Vote == 0) || (r.Vote == r.id)) && (r.RaftLog.LastTerm() < m.LogTerm || (r.RaftLog.LastTerm() == m.LogTerm && r.RaftLog.LastIndex() <= m.Index)) {
+		return true
+	}
+	return false
+}
+
+// there some Message Type won't go over the network, Msghug and Msgbeat
 func (r *Raft) Step(m pb.Message) error {
 	// Your Code Here (2A).
+	// check Message's term
+	//if(m.Term < r.Term) {
+	//
+	//		return nil
+	//} else if(m.Term >= r.Term) {
+	//	if m.MsgType == pb.MessageType_MsgRequestVote {
+	//		voteResponse := pb.Message{
+	//		From:   r.id,
+	//		To:     m.From,
+	//		Term: r.Term,
+	//	}
+	//		if m.Term < r.Term { // voted false, send response
+	//
+	//			r.msgs = append(r.msgs, voteResponse)
+	//		}
+	//	}
+	//}
+
+	switch m.MsgType {
+	// everyone can receive
+	case pb.MessageType_MsgRequestVote:
+		if m.Term >= r.Term {
+			r.Term = m.Term// To make the term of node r grow faster
+		} else {r.Send(pb.Message{To: m.From, MsgType: pb.MessageType_MsgRequestVoteResponse, Reject: true})}
+
+		if (r.Vote == None || r.Vote == r.id) && r.IsUpdated(m){
+			r.Send(pb.Message {To: m.From, MsgType: pb.MessageType_MsgRequestVoteResponse, Reject: false})
+			r.Vote = m.From
+			r.becomeFollower(m.Term, 0)
+		} else {
+			r.Send(pb.Message{To: m.From, MsgType: pb.MessageType_MsgRequestVoteResponse, Reject: true})
+		}
+	default: {}
+	}
 	switch r.State {
 	case StateFollower:
+		r.StepFollower(m)
 	case StateCandidate:
+		r.StepFollower(m)
 	case StateLeader:
+		r.StepFollower(m)
 	}
 	return nil
 }

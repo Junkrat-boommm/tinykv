@@ -207,6 +207,8 @@ stale log entries:
 	candidate has not received any heartbeat before the election timeout, it
 	passes 'MessageType_MsgHup' to its Step method and becomes (or remains) a candidate to
 	start a new election.
+	hups never go over the network
+
 
 	'MessageType_MsgBeat' is an internal type that signals the leader to send a heartbeat of
 	the 'MessageType_MsgHeartbeat' type. If a node is a leader, the 'tick' function in

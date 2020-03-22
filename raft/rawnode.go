@@ -71,6 +71,7 @@ type Ready struct {
 type RawNode struct {
 	Raft *Raft
 	// Your Data Here (2A).
+
 }
 
 // NewRawNode returns a new RawNode given configuration and a list of raft peers.

@@ -1626,7 +1626,7 @@ func (nw *network) send(msgs ...pb.Message) {
 		m := msgs[0]
 		p := nw.peers[m.To]
 		p.Step(m)
-		msgs = append(msgs[1:], nw.filter(p.readMessages())...)
+		msgs = append(msgs[1:], nw.filter(p.readMessages())...)// clear the msgs
 	}
 }
 
