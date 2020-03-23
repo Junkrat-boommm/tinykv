@@ -124,10 +124,11 @@ func (l *RaftLog) nextEnts() (ents []pb.Entry) {
 }
 
 // LastIndex return the last index of the lon entries
+//TODO: this method may cause problem, need to deal after understanding how leader handle entry's index when receiving a new entry
 func (l *RaftLog) LastIndex() uint64 {
 	// Your Code Here (2A).
 	if len := len(l.entries); len != 0 {
-		return l.entries[len - 1].Index
+		return l.entries[0].Index + (uint64)(len)
 	}
 	return 0
 }
@@ -142,11 +143,22 @@ func (l *RaftLog) LastTerm() uint64 {
 // Term return the term of the entry in the given index
 func (l *RaftLog) Term(i uint64) (uint64, error) {
 	// Your Code Here (2A).
-	offset := l.entries[0].Index
+	offset := l.getOffset()
 	if i < offset || i - offset + 1 > uint64(len(l.entries)) {
 		return 0, errors.New("invalid index!")
 	} else {
 		return l.entries[i -offset].Term, nil
 	}
 	//return 0, nil
+}
+
+func (l *RaftLog) Delete(i uint64) error {
+	offset := l.getOffset()
+	if i < offset || i - offset + 1 > uint64(len(l.entries)) {
+		l.entries = l.entries[:i - offset]
+	}
+}
+
+func (l *RaftLog) Append(en pb.Entry) {
+	l.entries = append(l.entries, en)
 }

@@ -210,7 +210,7 @@ stale log entries:
 	hups never go over the network
 
 
-	'MessageType_MsgBeat' is an internal type that signals the leader to send a heartbeat of
+	'MessageType_MsgBeat' is an iternal type that nsignals the leader to send a heartbeat of
 	the 'MessageType_MsgHeartbeat' type. If a node is a leader, the 'tick' function in
 	the 'raft' struct is set as 'tickHeartbeat', and triggers the leader to
 	send periodic 'MessageType_MsgHeartbeat' messages to its followers.
