@@ -102,6 +102,8 @@ func TestLeaderBcastBeat2AA(t *testing.T) {
 	msgs := r.readMessages()
 	sort.Sort(messageSlice(msgs))
 	wmsgs := []pb.Message{
+		// should be {From: 1, To: 2, Term: 1, MsgType: pb.MessageType_MsgHeartbeat, Index: 1},
+		// Maybe it doesn't matter if you don't add lastIndex, but I have trouble here in this test
 		{From: 1, To: 2, Term: 1, MsgType: pb.MessageType_MsgHeartbeat},
 		{From: 1, To: 3, Term: 1, MsgType: pb.MessageType_MsgHeartbeat},
 	}

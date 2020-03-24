@@ -16,6 +16,7 @@ package raft
 
 import (
 	"errors"
+	"github.com/pingcap-incubator/tinykv/log"
 	pb "github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
 )
 
@@ -60,19 +61,19 @@ type RaftLog struct {
 func newLog(storage Storage) *RaftLog {
 	// Your Code Here (2A).
 	//snapshot, _ := storage.Snapshot()
-	newlog := &RaftLog{storage:storage}
+	newlog := &RaftLog{storage: storage}
 
 	// get LastIndex in latest Snapshot + 1
-	firstIndex, _ := storage.FirstIndex()// TODO: handlet the situation that fisrt log is dummy
-	newlog.committed = firstIndex - 1
-	newlog.applied = newlog.committed
-
-	// get LastIndex in storage
+	firstIndex, _ := storage.FirstIndex() // TODO: handlet the situation that fisrt log is dummy
+	//newlog.committed = firstIndex - 1
+	//newlog.applied = newlog.committed
 	lastIndex, _ := storage.LastIndex()
 	newlog.stabled = lastIndex
 
-	entries, _ := storage.Entries(firstIndex, lastIndex)
+	// the index must be in the range [FirstIndex()-1, LastIndex()]
+	entries, _ := storage.Entries(firstIndex, lastIndex+1) // the first entry is always old???
 	newlog.entries = entries
+	log.Infof("entries: %v, len: %v", newlog.entries, len(newlog.entries))
 
 	newlog.pendingSnapshot = nil //handle in 2C
 
@@ -87,14 +88,16 @@ func (l *RaftLog) maybeCompact() {
 }
 
 func (l *RaftLog) getOffset() uint64 {
-	if len(l.entries) < 0 {return 0}
+	if len(l.entries) < 0 {
+		return 0
+	}
 	return l.entries[0].Index
 }
 
 func (l *RaftLog) getEntries(start, end uint64) []pb.Entry {
 	offset := l.getOffset()
-	if start >= offset && start <= end && end + 1 - offset <= (uint64)(len(l.entries)) {
-		return l.entries[start - offset: end - offset + 1 ]
+	if start >= offset && start <= end && end+1-offset <= (uint64)(len(l.entries)) {
+		return l.entries[start-offset : end-offset+1]
 	} else {
 		return nil
 	}
@@ -104,10 +107,10 @@ func (l *RaftLog) getEntries(start, end uint64) []pb.Entry {
 func (l *RaftLog) unstableEntries() []pb.Entry {
 	// Your Code Here (2A).
 	offset := l.getOffset()
-	if l.stabled + 1 -offset >= (uint64)(len(l.entries)) {
+	if l.stabled+1-offset >= (uint64)(len(l.entries)) {
 		return nil
 	} else {
-		return l.entries[l.stabled - offset + 1 :]
+		return l.entries[l.stabled-offset+1:]
 	}
 }
 
@@ -115,10 +118,10 @@ func (l *RaftLog) unstableEntries() []pb.Entry {
 func (l *RaftLog) nextEnts() (ents []pb.Entry) {
 	// Your Code Here (2A).
 	offset := l.getOffset()
-	if l.applied >= l.committed || l.committed + 1 -offset > (uint64)(len(l.entries))  || l.applied < offset {
+	if l.applied >= l.committed || l.committed+1-offset > (uint64)(len(l.entries)) || l.applied < offset {
 		return nil
 	} else {
-		return l.entries[l.applied - offset:l.committed - offset + 1]
+		return l.entries[l.applied-offset : l.committed-offset+1]
 	}
 	//return nil
 }
@@ -128,14 +131,14 @@ func (l *RaftLog) nextEnts() (ents []pb.Entry) {
 func (l *RaftLog) LastIndex() uint64 {
 	// Your Code Here (2A).
 	if len := len(l.entries); len != 0 {
-		return l.entries[0].Index + (uint64)(len)
+		return l.entries[len-1].Index
 	}
 	return 0
 }
 
 func (l *RaftLog) LastTerm() uint64 {
 	if len := len(l.entries); len != 0 {
-		return l.entries[len - 1].Term
+		return l.entries[len-1].Term
 	}
 	return 0
 }
@@ -144,19 +147,21 @@ func (l *RaftLog) LastTerm() uint64 {
 func (l *RaftLog) Term(i uint64) (uint64, error) {
 	// Your Code Here (2A).
 	offset := l.getOffset()
-	if i < offset || i - offset + 1 > uint64(len(l.entries)) {
+	if i < offset || i-offset+1 > uint64(len(l.entries)) {
 		return 0, errors.New("invalid index!")
 	} else {
-		return l.entries[i -offset].Term, nil
+		return l.entries[i-offset].Term, nil
 	}
 	//return 0, nil
 }
 
 func (l *RaftLog) Delete(i uint64) error {
 	offset := l.getOffset()
-	if i < offset || i - offset + 1 > uint64(len(l.entries)) {
-		l.entries = l.entries[:i - offset]
+	if i < offset || i-offset+1 > uint64(len(l.entries)) {
+		l.entries = l.entries[:i-offset]
+		return nil
 	}
+	return errors.New("delete error")
 }
 
 func (l *RaftLog) Append(en pb.Entry) {

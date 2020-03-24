@@ -60,7 +60,7 @@ const (
 	MessageType_MsgPropose MessageType = 2
 	// 'MessageType_MsgAppend' contains log entries to replicate.
 	MessageType_MsgAppend MessageType = 3
-	// 'MessageType_MsgAppendResponse' is response to log replication request('MessageType_MsgAppend').
+	// 'MessageType_MsgAppendResponseMation request('MessageType_MsgAppend').
 	MessageType_MsgAppendResponse MessageType = 4
 	// 'MessageType_MsgRequestVote' requests votes for election.
 	MessageType_MsgRequestVote MessageType = 5

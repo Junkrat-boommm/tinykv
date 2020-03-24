@@ -159,7 +159,7 @@ func (ms *MemoryStorage) FirstIndex() (uint64, error) {
 }
 
 func (ms *MemoryStorage) firstIndex() uint64 {
-	return ms.ents[0].Index + 1
+	return ms.ents[0].Index + 1 // why + 1?
 }
 
 // Snapshot implements the Storage interface.
