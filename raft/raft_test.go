@@ -1474,7 +1474,7 @@ func TestSplitVote2AA(t *testing.T) {
 	nt.send(pb.Message{From: 1, To: 1, MsgType: pb.MessageType_MsgHup})
 
 	// simulate leader down. followers start split vote.
-	nt.isolate(1)
+	nt.isolate(1) // leader disconnect
 	nt.send([]pb.Message{
 		{From: 2, To: 2, MsgType: pb.MessageType_MsgHup},
 		{From: 3, To: 3, MsgType: pb.MessageType_MsgHup},
@@ -1626,7 +1626,7 @@ func (nw *network) send(msgs ...pb.Message) {
 		m := msgs[0]
 		p := nw.peers[m.To]
 		p.Step(m)
-		msgs = append(msgs[1:], nw.filter(p.readMessages())...)// clear the msgs
+		msgs = append(msgs[1:], nw.filter(p.readMessages())...) // clear the msgs
 	}
 }
 

@@ -260,6 +260,9 @@ func LogTypeToString(t LogType) (string, string) {
 }
 
 func New() *Logger {
+	//
+	//f, _ := os.OpenFile("/home/ganquan/Desktop/test2a.txt", os.O_WRONLY|os.O_CREATE|os.O_SYNC|os.O_TRUNC, 0755)
+	//os.Stderr = f
 	return NewLogger(os.Stderr, "")
 }
 

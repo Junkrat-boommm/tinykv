@@ -72,8 +72,9 @@ func newLog(storage Storage) *RaftLog {
 
 	// the index must be in the range [FirstIndex()-1, LastIndex()]
 	entries, _ := storage.Entries(firstIndex, lastIndex+1) // the first entry is always old???
+	//newlog.entries = append(make([]pb.Entry, 1), entries[0:]...) // should add a dummy entry
 	newlog.entries = entries
-	log.Infof("entries: %v, len: %v", newlog.entries, len(newlog.entries))
+	//log.Infof("entries: %v, len: %v", newlog.entries, len(newlog.entries))
 
 	newlog.pendingSnapshot = nil //handle in 2C
 
@@ -88,7 +89,7 @@ func (l *RaftLog) maybeCompact() {
 }
 
 func (l *RaftLog) getOffset() uint64 {
-	if len(l.entries) < 0 {
+	if len(l.entries) <= 0 {
 		return 0
 	}
 	return l.entries[0].Index
@@ -118,10 +119,11 @@ func (l *RaftLog) unstableEntries() []pb.Entry {
 func (l *RaftLog) nextEnts() (ents []pb.Entry) {
 	// Your Code Here (2A).
 	offset := l.getOffset()
-	if l.applied >= l.committed || l.committed+1-offset > (uint64)(len(l.entries)) || l.applied < offset {
+	log.Infof("offset: %v, applied: %v, committed: %v, len: %v", offset, l.applied, l.committed, len(l.entries))
+	if l.applied >= l.committed || l.committed+1-offset > (uint64)(len(l.entries)) || l.applied < offset-1 {
 		return nil
 	} else {
-		return l.entries[l.applied-offset : l.committed-offset+1]
+		return l.entries[l.applied-offset+1 : l.committed-offset+1]
 	}
 	//return nil
 }
@@ -146,6 +148,9 @@ func (l *RaftLog) LastTerm() uint64 {
 // Term return the term of the entry in the given index
 func (l *RaftLog) Term(i uint64) (uint64, error) {
 	// Your Code Here (2A).
+	if i == 0 {
+		return 0, nil
+	}
 	offset := l.getOffset()
 	if i < offset || i-offset+1 > uint64(len(l.entries)) {
 		return 0, errors.New("invalid index!")
@@ -157,11 +162,13 @@ func (l *RaftLog) Term(i uint64) (uint64, error) {
 
 func (l *RaftLog) Delete(i uint64) error {
 	offset := l.getOffset()
-	if i < offset || i-offset+1 > uint64(len(l.entries)) {
-		l.entries = l.entries[:i-offset]
-		return nil
+	log.Infof("offset = %v, i= %v", offset, i)
+	if i < offset || i-offset > uint64(len(l.entries)) {
+		return errors.New("delete error")
 	}
-	return errors.New("delete error")
+	l.entries = l.entries[:i-offset]
+	log.Infof("l.entries = %v", l.entries)
+	return nil
 }
 
 func (l *RaftLog) Append(en pb.Entry) {
