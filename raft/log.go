@@ -63,6 +63,8 @@ func newLog(storage Storage) *RaftLog {
 	//snapshot, _ := storage.Snapshot()
 	newlog := &RaftLog{storage: storage}
 
+	snapshot, _ := storage.Snapshot()
+
 	// get LastIndex in latest Snapshot + 1
 	firstIndex, _ := storage.FirstIndex() // TODO: handlet the situation that fisrt log is dummy
 	//newlog.committed = firstIndex - 1
