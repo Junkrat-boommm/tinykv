@@ -148,7 +148,7 @@ type Raft struct {
 	// (Used in 3A leader transfer)
 	leadTransferee uint64
 
-	randomizedElectionTimeout uint64
+	randomizedElectionTimeout int
 
 	// Only one conf change may be pending (in the log, but not yet
 	// applied) at a time. This is enforced via PendingConfIndex, which
