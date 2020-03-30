@@ -2,13 +2,7 @@ package server
 
 import (
 	"context"
-<<<<<<< HEAD
-	"fmt"
-=======
-
 	"github.com/pingcap-incubator/tinykv/scheduler/pkg/tsoutil"
-
->>>>>>> 1bb75e1be9e3c017f7671f3641772fe61f0a2f2a
 	"github.com/pingcap-incubator/tinykv/kv/storage"
 	"github.com/pingcap-incubator/tinykv/kv/storage/raft_storage"
 	"github.com/pingcap-incubator/tinykv/kv/transaction/latches"
