@@ -22,7 +22,7 @@ import (
 
 // RaftLog manage the log entries, its struct look like:
 //
-//  truncated.....first.....applied....committed....stabled.....last
+//  snapshot.....first.....applied....committed....stabled.....last
 //  --------|     |------------------------------------------------|
 //                                  log entries
 //
@@ -52,35 +52,30 @@ type RaftLog struct {
 	pendingSnapshot *pb.Snapshot
 
 	// Your Data Here (2A).
-	//lastIndex uint64
-	//lastTerm uint64
 }
 
 // newLog returns log using the given storage. It recovers the log
 // to the state that it just commits and applies the latest snapshot.
 func newLog(storage Storage) *RaftLog {
 	// Your Code Here (2A).
-	//snapshot, _ := storage.Snapshot()
-	newlog := &RaftLog{storage: storage}
+	nl := &RaftLog{storage: storage}
 
-	snapshot, _ := storage.Snapshot()
-
-	// get LastIndex in latest Snapshot + 1
-	firstIndex, _ := storage.FirstIndex() // TODO: handlet the situation that fisrt log is dummy
-	//newlog.committed = firstIndex - 1
-	//newlog.applied = newlog.committed
+	firstIndex, _ := storage.FirstIndex()
 	lastIndex, _ := storage.LastIndex()
-	newlog.stabled = lastIndex
 
-	// the index must be in the range [FirstIndex()-1, LastIndex()]
-	entries, _ := storage.Entries(firstIndex, lastIndex+1) // the first entry is always old???
-	//newlog.entries = append(make([]pb.Entry, 1), entries[0:]...) // should add a dummy entry
-	newlog.entries = entries
-	//log.Infof("entries: %v, len: %v", newlog.entries, len(newlog.entries))
+	entries, _ := storage.Entries(firstIndex, lastIndex+1)
+	log.Infof("len: %v, ents: %v", len(entries), entries)
 
-	newlog.pendingSnapshot = nil //handle in 2C
+	nl.entries = entries
+	nl.committed = firstIndex - 1
+	nl.applied = firstIndex - 1
+	nl.stabled = lastIndex
 
-	return newlog
+	if snapShot, err := storage.Snapshot(); err == nil {
+		nl.pendingSnapshot = &snapShot
+	}
+	log.Infof("newlog: %v", nl)
+	return nl
 }
 
 // We need to compact the log entries in some point of time like
@@ -110,7 +105,8 @@ func (l *RaftLog) getEntries(start, end uint64) []pb.Entry {
 func (l *RaftLog) unstableEntries() []pb.Entry {
 	// Your Code Here (2A).
 	offset := l.getOffset()
-	if l.stabled+1-offset >= (uint64)(len(l.entries)) {
+	log.Infof("stabled: %v, offset: %v, len: %v", l.stabled, offset, len(l.entries))
+	if l.stabled+1-offset > (uint64)(len(l.entries)) {
 		return nil
 	} else {
 		return l.entries[l.stabled-offset+1:]
@@ -127,15 +123,16 @@ func (l *RaftLog) nextEnts() (ents []pb.Entry) {
 	} else {
 		return l.entries[l.applied-offset+1 : l.committed-offset+1]
 	}
-	//return nil
 }
 
 // LastIndex return the last index of the lon entries
-//TODO: this method may cause problem, need to deal after understanding how leader handle entry's index when receiving a new entry
 func (l *RaftLog) LastIndex() uint64 {
 	// Your Code Here (2A).
 	if len := len(l.entries); len != 0 {
 		return l.entries[len-1].Index
+	}
+	if l.pendingSnapshot != nil {
+		return l.pendingSnapshot.Metadata.Index
 	}
 	return 0
 }
@@ -143,6 +140,9 @@ func (l *RaftLog) LastIndex() uint64 {
 func (l *RaftLog) LastTerm() uint64 {
 	if len := len(l.entries); len != 0 {
 		return l.entries[len-1].Term
+	}
+	if l.pendingSnapshot != nil {
+		return l.pendingSnapshot.Metadata.Term
 	}
 	return 0
 }
@@ -159,17 +159,15 @@ func (l *RaftLog) Term(i uint64) (uint64, error) {
 	} else {
 		return l.entries[i-offset].Term, nil
 	}
-	//return 0, nil
 }
 
 func (l *RaftLog) Delete(i uint64) error {
 	offset := l.getOffset()
-	log.Infof("offset = %v, i= %v", offset, i)
 	if i < offset || i-offset > uint64(len(l.entries)) {
-		return errors.New("delete error")
+		log.Infof("offset = %v, i= %v", offset, i)
+		return nil
 	}
 	l.entries = l.entries[:i-offset]
-	log.Infof("l.entries = %v", l.entries)
 	return nil
 }
 

@@ -111,6 +111,7 @@ func (ms *MemoryStorage) Entries(lo, hi uint64) ([]pb.Entry, error) {
 	ms.Lock()
 	defer ms.Unlock()
 	offset := ms.ents[0].Index
+	log.Infof("firstindex: %v, lastindex: %v, offset: %v", lo, hi, offset) // TODO: delete
 	if lo <= offset {
 		return nil, ErrCompacted
 	}
@@ -119,8 +120,10 @@ func (ms *MemoryStorage) Entries(lo, hi uint64) ([]pb.Entry, error) {
 	}
 
 	ents := ms.ents[lo-offset : hi-offset]
+	//log.Infof("entries: %v, term: %v, index: %v", ents, ents[0].Term, ents[0].Index)
 	if len(ms.ents) == 1 && len(ents) != 0 {
 		// only contains dummy entries.
+		log.Infof("sadfgdsaf")
 		return nil, ErrUnavailable
 	}
 	return ents, nil

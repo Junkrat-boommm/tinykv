@@ -270,41 +270,40 @@ func TestLogReplication2AB(t *testing.T) {
 		},
 	}
 
-	//for i, tt := range tests {
-	i := 0
-	tt := tests[i]
-	tt.send(pb.Message{From: 1, To: 1, MsgType: pb.MessageType_MsgHup})
+	for i, tt := range tests {
+		tt.send(pb.Message{From: 1, To: 1, MsgType: pb.MessageType_MsgHup})
 
-	for _, m := range tt.msgs {
-		tt.send(m)
-	}
-
-	for j, x := range tt.network.peers {
-		sm := x.(*Raft)
-
-		if sm.RaftLog.committed != tt.wcommitted {
-			t.Errorf("#%d.%d: committed = %d, want %d", i, j, sm.RaftLog.committed, tt.wcommitted)
-		}
-
-		ents := []pb.Entry{}
-		for _, e := range nextEnts(sm, tt.network.storage[j]) {
-			if e.Data != nil {
-				ents = append(ents, e)
-			}
-		}
-		props := []pb.Message{}
 		for _, m := range tt.msgs {
-			if m.MsgType == pb.MessageType_MsgPropose {
-				props = append(props, m)
-			}
+			tt.send(m)
 		}
-		for k, m := range props {
-			if !bytes.Equal(ents[k].Data, m.Entries[0].Data) {
-				t.Errorf("#%d.%d: data = %d, want %d", i, j, ents[k].Data, m.Entries[0].Data)
+
+		for j, x := range tt.network.peers {
+			log.Infof("j = %v", j)
+			sm := x.(*Raft)
+
+			if sm.RaftLog.committed != tt.wcommitted {
+				t.Errorf("#%d.%d: committed = %d, want %d", i, j, sm.RaftLog.committed, tt.wcommitted)
+			}
+
+			ents := []pb.Entry{}
+			for _, e := range nextEnts(sm, tt.network.storage[j]) {
+				if e.Data != nil {
+					ents = append(ents, e)
+				}
+			}
+			props := []pb.Message{}
+			for _, m := range tt.msgs {
+				if m.MsgType == pb.MessageType_MsgPropose {
+					props = append(props, m)
+				}
+			}
+			for k, m := range props {
+				if !bytes.Equal(ents[k].Data, m.Entries[0].Data) {
+					t.Errorf("#%d.%d: data = %d, want %d", i, j, ents[k].Data, m.Entries[0].Data)
+				}
 			}
 		}
 	}
-	//}
 }
 
 func TestSingleNodeCommit2AB(t *testing.T) {
@@ -562,7 +561,8 @@ func TestHandleMessageType_MsgAppend2AB(t *testing.T) {
 		{pb.Message{MsgType: pb.MessageType_MsgAppend, Term: 2, LogTerm: 1, Index: 1, Commit: 4, Entries: []*pb.Entry{{Index: 2, Term: 2}}}, 2, 2, false},
 
 		// Ensure 3
-		// I wonder why I don't need to delete the subsequent logs entries after append successfully
+		// I think it is ok to delete the original redundant logs after the log replication is successful
+		// Perhaps only when the leader sends only a part of the log should not delete the original redundant log
 		{pb.Message{MsgType: pb.MessageType_MsgAppend, Term: 1, LogTerm: 1, Index: 1, Commit: 3}, 2, 1, false},                                            // match entry 1, commit up to last new entry 1
 		{pb.Message{MsgType: pb.MessageType_MsgAppend, Term: 1, LogTerm: 1, Index: 1, Commit: 3, Entries: []*pb.Entry{{Index: 2, Term: 2}}}, 2, 2, false}, // match entry 1, commit up to last new entry 2
 		{pb.Message{MsgType: pb.MessageType_MsgAppend, Term: 2, LogTerm: 2, Index: 2, Commit: 3}, 2, 2, false},                                            // match entry 2, commit up to last new entry 2
@@ -702,7 +702,6 @@ func TestRecvMessageType_MsgRequestVote2AA(t *testing.T) {
 	}
 }
 
-//
 func TestAllServerStepdown2AB(t *testing.T) {
 	tests := []struct {
 		state StateType
@@ -943,33 +942,31 @@ func TestBcastBeat2AB(t *testing.T) {
 		t.Fatalf("len(msgs) = %v, want 2", len(msgs))
 	}
 	wantCommitMap := map[uint64]uint64{
-		2: min(sm.RaftLog.committed, sm.Prs[2].Match),
+		2: min(sm.RaftLog.committed, sm.Prs[2].Match), //
 		3: min(sm.RaftLog.committed, sm.Prs[3].Match),
 	}
-	//for i, m := range msgs {
-	i := 0
-	m := msgs[i]
-	if m.MsgType != pb.MessageType_MsgHeartbeat {
-		t.Fatalf("#%d: type = %v, want = %v", i, m.MsgType, pb.MessageType_MsgHeartbeat)
-	}
-	if m.Index != 0 {
-		t.Fatalf("#%d: prevIndex = %d, want %d", i, m.Index, 0)
-	}
-	if m.LogTerm != 0 {
-		t.Fatalf("#%d: prevTerm = %d, want %d", i, m.LogTerm, 0)
-	}
-	if wantCommitMap[m.To] == 0 {
-		t.Fatalf("#%d: unexpected to %d", i, m.To)
-	} else {
-		if m.Commit != wantCommitMap[m.To] {
-			t.Fatalf("#%d: commit = %d, want %d", i, m.Commit, wantCommitMap[m.To])
+	for i, m := range msgs {
+		if m.MsgType != pb.MessageType_MsgHeartbeat {
+			t.Fatalf("#%d: type = %v, want = %v", i, m.MsgType, pb.MessageType_MsgHeartbeat)
 		}
-		delete(wantCommitMap, m.To)
+		if m.Index != 0 {
+			t.Fatalf("#%d: prevIndex = %d, want %d", i, m.Index, 0)
+		}
+		if m.LogTerm != 0 {
+			t.Fatalf("#%d: prevTerm = %d, want %d", i, m.LogTerm, 0)
+		}
+		if wantCommitMap[m.To] == 0 {
+			t.Fatalf("#%d: unexpected to %d", i, m.To)
+		} else {
+			if m.Commit != wantCommitMap[m.To] {
+				t.Fatalf("#%d: commit = %d, want %d", i, m.Commit, wantCommitMap[m.To])
+			}
+			delete(wantCommitMap, m.To)
+		}
+		if len(m.Entries) != 0 {
+			t.Fatalf("#%d: len(entries) = %d, want 0", i, len(m.Entries))
+		}
 	}
-	if len(m.Entries) != 0 {
-		t.Fatalf("#%d: len(entries) = %d, want 0", i, len(m.Entries))
-	}
-	//}
 }
 
 // tests the output of the state machine when receiving MessageType_MsgBeat
