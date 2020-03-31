@@ -146,7 +146,7 @@ type Raft struct {
 
 	// leadTransferee is id of the leader transfer target when its value is not zero.
 	// Follow the procedure defined in raft thesis 3.10.
-	// (Used in 3A leader transfer)
+
 	leadTransferee uint64
 
 	// Only one conf change may be pending (in the log, but not yet
