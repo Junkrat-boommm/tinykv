@@ -70,8 +70,11 @@ type BadgerReader struct {
 }
 
 func (reader BadgerReader) GetCF(cf string, key []byte) ([]byte, error) {
-	// val, err := engine_util.GetCFFromTxn(reader.txn, cf, key)
-	return engine_util.GetCFFromTxn(reader.txn, cf, key)
+	val, err := engine_util.GetCFFromTxn(reader.txn, cf, key)
+	if err != nil && err != badger.ErrKeyNotFound {
+		return val, err
+	}
+	return val, nil
 }
 func (reader BadgerReader) IterCF(cf string) engine_util.DBIterator {
 	return engine_util.NewCFIterator(cf, reader.txn)

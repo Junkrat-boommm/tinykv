@@ -16,6 +16,7 @@ package raft
 
 import (
 	"errors"
+	"github.com/pingcap-incubator/tinykv/log"
 	pb "github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
 )
 
@@ -182,6 +183,10 @@ func (rn *RawNode) Ready() Ready {
 		rf.msgs = nil
 	}
 
+	if !IsEmptySnap(rf.RaftLog.pendingSnapshot) {
+		rd.Snapshot = *rf.RaftLog.pendingSnapshot
+	}
+
 	return rd
 }
 
@@ -190,20 +195,19 @@ func (rn *RawNode) IsUpdatedSS(ss *SoftState) bool {
 	return rn.PrevSoftState.RaftState != ss.RaftState || rn.PrevSoftState.Lead != ss.Lead
 }
 
-// IsUpdatedSS determines if SoftState is updated
-func (rn *RawNode) ISUpdatedHS(hs pb.HardState) bool {
-	return rn.PrevHardState.Commit != hs.Commit || rn.PrevHardState.Vote != hs.Vote || rn.PrevHardState.Term != hs.Term
-}
 
 // HasReady called when RawNode user need to check if any Ready pending.
 func (rn *RawNode) HasReady() bool {
 	// Your Code Here (2A).
 	rf := rn.Raft
 	// determines if state has changed
+	if !isHardStateEqual(rf.HardState(), rn.PrevHardState) {
+		return true
+	}
 	if rn.IsUpdatedSS(rf.SoftState()) {
 		return true
 	}
-	if rn.ISUpdatedHS(rf.HardState()) {
+	if !IsEmptySnap(rf.RaftLog.pendingSnapshot) {
 		return true
 	}
 	if len(rf.msgs) != 0 || len(rf.RaftLog.nextEnts()) != 0 || len(rf.RaftLog.unstableEntries()) != 0 {
@@ -220,7 +224,7 @@ func (rn *RawNode) Advance(rd Ready) {
 	if rd.SoftState != nil && rn.IsUpdatedSS(rd.SoftState) {
 		rn.PrevSoftState = rd.SoftState
 	}
-	if rn.ISUpdatedHS(rd.HardState) && !IsEmptyHardState(rd.HardState) {
+	if !IsEmptyHardState(rd.HardState) && !isHardStateEqual(rd.HardState, rn.PrevHardState) {
 		rn.PrevHardState = rd.HardState
 	}
 
@@ -231,6 +235,12 @@ func (rn *RawNode) Advance(rd Ready) {
 	if l := len(rd.CommittedEntries); l != 0 {
 		rf.RaftLog.applied = rd.CommittedEntries[l-1].Index
 	}
+
+	if !IsEmptySnap(&rd.Snapshot) {
+		log.Panicf("snapshot should deal in lab2c")
+	}
+
+	// TODO: handle snapshot apply
 
 }
 

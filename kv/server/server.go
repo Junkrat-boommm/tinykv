@@ -2,13 +2,13 @@ package server
 
 import (
 	"context"
-	"github.com/pingcap-incubator/tinykv/scheduler/pkg/tsoutil"
 	"github.com/pingcap-incubator/tinykv/kv/storage"
 	"github.com/pingcap-incubator/tinykv/kv/storage/raft_storage"
 	"github.com/pingcap-incubator/tinykv/kv/transaction/latches"
 	"github.com/pingcap-incubator/tinykv/proto/pkg/coprocessor"
 	"github.com/pingcap-incubator/tinykv/proto/pkg/kvrpcpb"
 	"github.com/pingcap-incubator/tinykv/proto/pkg/tinykvpb"
+	"github.com/pingcap-incubator/tinykv/scheduler/pkg/tsoutil"
 	//"golang.org/x/text/date"
 )
 
@@ -39,7 +39,10 @@ func (server *Server) RawGet(_ context.Context, req *kvrpcpb.RawGetRequest) (*kv
 	key, cf, context := req.GetKey(), req.GetCf(), req.GetContext()
 	reader, _ := server.storage.Reader(context)
 	value ,err := reader.GetCF(cf, key)
-	if err != nil {// err != nil represents failure
+	if err != nil {
+		return response, err
+	}
+	if value == nil	{// value == nil represents failure
 		response.NotFound = true
 	} else {
 		response.Value = value
