@@ -5,8 +5,8 @@ import (
 	"github.com/Connor1996/badger"
 	"github.com/pingcap-incubator/tinykv/kv/config"
 	"github.com/pingcap-incubator/tinykv/kv/storage"
-	"github.com/pingcap-incubator/tinykv/proto/pkg/kvrpcpb"
 	"github.com/pingcap-incubator/tinykv/kv/util/engine_util"
+	"github.com/pingcap-incubator/tinykv/proto/pkg/kvrpcpb"
 )
 
 // StandAloneStorage is an implementation of `Storage` for a single-node TinyKV instance. It does not
@@ -70,8 +70,7 @@ type BadgerReader struct {
 }
 
 func (reader BadgerReader) GetCF(cf string, key []byte) ([]byte, error) {
-	//value, err := reader.txn.Get(append([]byte(cf+"_"), key...))
-	//return value, err
+	// val, err := engine_util.GetCFFromTxn(reader.txn, cf, key)
 	return engine_util.GetCFFromTxn(reader.txn, cf, key)
 }
 func (reader BadgerReader) IterCF(cf string) engine_util.DBIterator {
