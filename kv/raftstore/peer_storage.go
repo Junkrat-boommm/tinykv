@@ -341,8 +341,6 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 
 	metadata := snapshot.Metadata
 
-	if metadata.Index < ps.
-
 	// update the peers storage's memory state
 	if snapshotData.Region != nil  {
 		ps.region = snapshotData.Region
@@ -362,7 +360,6 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 	}
 
 	// wait until region worker finish.
-
 
 
 	return nil, nil
