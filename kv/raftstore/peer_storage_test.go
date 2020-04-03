@@ -71,7 +71,9 @@ func TestPeerStorageTerm(t *testing.T) {
 		{4, 4, nil},
 		{5, 5, nil},
 	}
-	for _, tt := range tests {
+	//for _, tt := range tests {
+	i := 1
+	tt := tests[i]
 		peerStore := newTestPeerStorageFromEnts(t, ents)
 		term, err := peerStore.Term(tt.idx)
 		if err != nil {
@@ -80,7 +82,7 @@ func TestPeerStorageTerm(t *testing.T) {
 			assert.Equal(t, term, tt.term)
 		}
 		cleanUpTestData(peerStore)
-	}
+	//}
 }
 
 func appendEnts(t *testing.T, peerStore *PeerStorage, ents []eraftpb.Entry) {

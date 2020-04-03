@@ -107,7 +107,7 @@ func (c *Cluster) Start() {
 	}
 
 	for _, engine := range c.engines {
-		raftstore.PrepareBootstrapCluster(engine, firstRegion)
+		raftstore.PrepareBootstrapCluster(engine, firstRegion) // writeInitialApplyState and writeInitialRaftState
 	}
 
 	store := &metapb.Store{
@@ -135,7 +135,7 @@ func (c *Cluster) Start() {
 	}
 
 	for storeID := range c.engines {
-		c.StartServer(storeID)
+		c.StartServer(storeID)	// start server
 	}
 }
 

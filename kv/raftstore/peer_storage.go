@@ -216,7 +216,7 @@ func (ps *PeerStorage) checkRange(low, high uint64) error {
 }
 
 func (ps *PeerStorage) truncatedIndex() uint64 {
-	return ps.applyState.TruncatedState.Index
+	return ps.applyState.TruncatedState.Index	// maybe TruncatedState is nil
 }
 
 func (ps *PeerStorage) truncatedTerm() uint64 {
