@@ -342,14 +342,21 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 	metadata := snapshot.Metadata
 
 	// update the peers storage's memory state
-	if snapshotData.Region != nil  {
-		ps.region = snapshotData.Region
-	}
 
+	// update RaftLocalState
+	ps.raftState.LastIndex = metadata.Index
+	ps.raftState.LastTerm = metadata.Term
+	ps.raftState.HardState.Commit = metadata.Index
+
+	// update RaftApplyState
 	ps.applyState.AppliedIndex = metadata.Index
 	// ps.applyState.TruncatedState
 
 	ps.snapState.StateType = snap.SnapState_Applying
+
+	if snapshotData.Region != nil  {
+		ps.region = snapshotData.Region
+	}
 
 	ps.regionSched <- runner.RegionTaskApply{
 		RegionId: ps.region.Id,
