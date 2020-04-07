@@ -259,7 +259,8 @@ func (r *Raft) sendHeartbeat(to uint64) {
 		To:      to,
 		MsgType: pb.MessageType_MsgHeartbeat,
 		// To allow followers to submit logs
-		Commit: min(r.RaftLog.committed, r.Prs[to].Match),
+		// Commit: min(r.RaftLog.committed, r.Prs[to].Match),
+		Commit: r.RaftLog.committed,
 	}
 	r.Send(m)
 }
