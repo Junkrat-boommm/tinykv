@@ -43,6 +43,15 @@ func (d *peerMsgHandler) HandleRaftReady() {
 		return
 	}
 	// Your Code Here (2B).
+	// get the ready from Raft
+	p := d.peer
+	if p.RaftGroup.HasReady() {
+		return
+	}
+	rd := p.RaftGroup.Ready()
+
+	// persisting log entries
+
 }
 
 func (d *peerMsgHandler) HandleMsg(msg message.Msg) {

@@ -90,6 +90,8 @@ func (c *Cluster) Start() {
 		Version: raftstore.InitEpochVer,
 		ConfVer: raftstore.InitEpochConfVer,
 	}
+
+	// There is
 	firstRegion := &metapb.Region{
 		Id:          1,
 		StartKey:    []byte{},

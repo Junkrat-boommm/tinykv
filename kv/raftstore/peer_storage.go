@@ -70,6 +70,7 @@ func NewPeerStorage(engines *engine_util.Engines, region *metapb.Region, regionS
 		region:      region,
 		Tag:         tag,
 		raftState:   *raftState,
+		applyState:  *applyState,
 		regionSched: regionSched,
 	}, nil
 }
@@ -350,7 +351,7 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 
 	// update RaftApplyState
 	ps.applyState.AppliedIndex = metadata.Index
-	// ps.applyState.TruncatedState
+	ps.applyState.TruncatedState = &rspb.RaftTruncatedState{Index: metadata.Index, Term: metadata.Term}
 
 	ps.snapState.StateType = snap.SnapState_Applying
 
@@ -369,6 +370,10 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 	// wait until region worker finish.
 
 
+
+	ps.clearMeta(kvWB, raftWB)
+	ps.clearExtraData(ps.region)
+
 	return nil, nil
 }
 
@@ -380,7 +385,10 @@ func (ps *PeerStorage) SaveReadyState(ready *raft.Ready) (*ApplySnapResult, erro
 	kvWB := new(engine_util.WriteBatch)
 	raftWB := new(engine_util.WriteBatch)
 	if !raft.IsEmptySnap(&ready.Snapshot) {
-		ps.ApplySnapshot(&ready.Snapshot, kvWB, raftWB)
+		reply, err := ps.ApplySnapshot(&ready.Snapshot, kvWB, raftWB)
+		if err != nil {
+			return reply, err
+		}
 	}
 
 	if len(ready.Entries) != 0 {
