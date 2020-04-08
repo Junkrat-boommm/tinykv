@@ -217,7 +217,7 @@ func (ps *PeerStorage) checkRange(low, high uint64) error {
 }
 
 func (ps *PeerStorage) truncatedIndex() uint64 {
-	return ps.applyState.TruncatedState.Index	// maybe TruncatedState is nil
+	return ps.applyState.TruncatedState.Index // maybe TruncatedState is nil
 }
 
 func (ps *PeerStorage) truncatedTerm() uint64 {
@@ -307,8 +307,10 @@ func ClearMeta(engines *engine_util.Engines, kvWB, raftWB *engine_util.WriteBatc
 func (ps *PeerStorage) Append(entries []eraftpb.Entry, raftWB *engine_util.WriteBatch) error {
 	// Your Code Here (2B).
 	l := len(entries)
-	if l == 0 {return nil}
-	for _ , en := range entries {
+	if l == 0 {
+		return nil
+	}
+	for _, en := range entries {
 		err := raftWB.SetMeta(meta.RaftLogKey(ps.region.Id, en.Index), &en)
 		if err != nil {
 			return err
@@ -355,7 +357,7 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 
 	ps.snapState.StateType = snap.SnapState_Applying
 
-	if snapshotData.Region != nil  {
+	if snapshotData.Region != nil {
 		ps.region = snapshotData.Region
 	}
 
@@ -369,8 +371,6 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 
 	// wait until region worker finish.
 
-
-
 	ps.clearMeta(kvWB, raftWB)
 	ps.clearExtraData(ps.region)
 
@@ -382,15 +382,16 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 func (ps *PeerStorage) SaveReadyState(ready *raft.Ready) (*ApplySnapResult, error) {
 	// Hint: you may call `Append()` and `ApplySnapshot()` in this function
 	// Your Code Here (2B).
-	kvWB := new(engine_util.WriteBatch)
-	raftWB := new(engine_util.WriteBatch)
-	if !raft.IsEmptySnap(&ready.Snapshot) {
-		reply, err := ps.ApplySnapshot(&ready.Snapshot, kvWB, raftWB)
-		if err != nil {
-			return reply, err
-		}
-	}
+	//kvWB := new(engine_util.WriteBatch)
+	//raftWB := new(engine_util.WriteBatch)
+	//if !raft.IsEmptySnap(&ready.Snapshot) {
+	//	reply, err := ps.ApplySnapshot(&ready.Snapshot, kvWB, raftWB)
+	//	if err != nil {
+	//		return reply, err
+	//	}
+	//}
 
+	raftWB := new(engine_util.WriteBatch)
 	if len(ready.Entries) != 0 {
 		ps.Append(ready.Entries, raftWB)
 	}
@@ -400,6 +401,8 @@ func (ps *PeerStorage) SaveReadyState(ready *raft.Ready) (*ApplySnapResult, erro
 	}
 
 	raftWB.SetMeta(meta.RaftStateKey(ps.region.Id), &ps.raftState)
+
+	raftWB.MustWriteToDB(ps.Engines.Raft)
 
 	return nil, nil
 }

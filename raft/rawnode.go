@@ -107,7 +107,7 @@ func (rn *RawNode) Campaign() error {
 	})
 }
 
-// Propose proposes data be appended to the raft log.
+// Propose proposes data be appended to the.Requests raft log.
 func (rn *RawNode) Propose(data []byte) error {
 	ent := pb.Entry{Data: data}
 	return rn.Raft.Step(pb.Message{
@@ -194,7 +194,6 @@ func (rn *RawNode) Ready() Ready {
 func (rn *RawNode) IsUpdatedSS(ss *SoftState) bool {
 	return rn.PrevSoftState.RaftState != ss.RaftState || rn.PrevSoftState.Lead != ss.Lead
 }
-
 
 // HasReady called when RawNode user need to check if any Ready pending.
 func (rn *RawNode) HasReady() bool {

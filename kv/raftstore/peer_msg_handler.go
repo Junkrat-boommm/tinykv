@@ -2,6 +2,9 @@ package raftstore
 
 import (
 	"fmt"
+	"github.com/pingcap-incubator/tinykv/kv/util/engine_util"
+	"github.com/pingcap-incubator/tinykv/proto/_tools/src/github.com/gogo/protobuf/proto"
+	"github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
 	"time"
 
 	"github.com/Connor1996/badger/y"
@@ -51,6 +54,114 @@ func (d *peerMsgHandler) HandleRaftReady() {
 	rd := p.RaftGroup.Ready()
 
 	// persisting log entries
+	p.peerStorage.SaveReadyState(&rd)
+
+	// send Raft Message
+	for _, m := range rd.Messages {
+		p.sendRaftMessage(m, d.ctx.trans)
+	}
+
+	//  applying committed entries
+	if l := len(rd.CommittedEntries); l != 0 {
+		for _, en := range rd.CommittedEntries {
+			d.process(en)
+		}
+	}
+
+	// persist apply state
+	// writeApplyState()???
+
+	p.RaftGroup.Advance(rd)
+}
+
+func (d *peerMsgHandler) process(e eraftpb.Entry) {
+	p := d.peer
+	msg := &raft_cmdpb.RaftCmdRequest{}
+	err := proto.Unmarshal(e.Data, msg)
+	if err != nil {
+		return
+	}
+	var resps []*raft_cmdpb.Response
+	kvWB := new(engine_util.WriteBatch)
+	for _, req := range msg.Requests {
+		switch req.GetCmdType() {
+		case raft_cmdpb.CmdType_Invalid:
+
+		// The server should not complete a get RPC if it is not part of a majority and do not has up-to-date data.
+		case raft_cmdpb.CmdType_Get:
+			log.Panic("process CmdType_Get, where is it from")
+			if p.IsLeader() {
+				// _ := req.Get
+			}
+		case raft_cmdpb.CmdType_Put:
+			put := req.GetPut()
+			if put == nil {
+				log.Panic("put request is nil")
+			}
+			cf := put.GetCf()
+			k := put.GetKey()
+			v := put.GetValue()
+			if k == nil || v == nil {
+				log.Panic("k == nil || v == nil")
+			}
+			kvWB.SetCF(cf, k, v)
+			resps = append(resps, &raft_cmdpb.Response{
+				CmdType: raft_cmdpb.CmdType_Put,
+			})
+		case raft_cmdpb.CmdType_Delete:
+			del := req.GetDelete()
+			if del == nil {
+				log.Panic("del request is nil")
+			}
+			cf := del.GetCf()
+			k := del.GetKey()
+			if k == nil {
+				log.Panic("k == nil || v == nil")
+			}
+			kvWB.DeleteCF(cf, k)
+			resps = append(resps, &raft_cmdpb.Response{
+				CmdType: raft_cmdpb.CmdType_Delete,
+			})
+		case raft_cmdpb.CmdType_Snap:
+			// snap := req.GetSnap()
+			resps = append(resps, &raft_cmdpb.Response{
+				CmdType: raft_cmdpb.CmdType_Snap,
+				Snap:    &raft_cmdpb.SnapResponse{Region: p.Region()},
+			})
+		}
+	}
+	kvWB.MustWriteToDB(p.peerStorage.Engines.Kv)
+
+	header := &raft_cmdpb.RaftResponseHeader{
+		Error:       nil,
+		Uuid:        nil, // TODO: deal with Uuid
+		CurrentTerm: p.Term(),
+	}
+
+	response := &raft_cmdpb.RaftCmdResponse{
+		Header:    header,
+		Responses: resps,
+	}
+
+	if len(p.proposals) == 0 {
+		log.Panic("proposal is nil")
+	}
+
+	var cb *message.Callback = nil
+	for i, proposal := range p.proposals {
+		if proposal.term == e.Term && proposal.index == e.Index {
+			cb = proposal.cb
+			p.proposals = append(p.proposals[0:i], p.proposals[i+1:]...) // delete this cb
+		}
+	}
+	if cb == nil {
+		log.Panic("cannot find the cb")
+	}
+	if len(resps) == 1 && resps[0].CmdType == raft_cmdpb.CmdType_Snap {
+		cb.Txn = p.peerStorage.Engines.Kv.NewTransaction(false) // not sure
+	}
+
+	cb.Done(response)
 
 }
 
@@ -116,6 +227,7 @@ func (d *peerMsgHandler) preProposeRaftCommand(req *raft_cmdpb.RaftCmdRequest) e
 	return err
 }
 
+//  proposeRaftCommand proposeS the raft command to Raft module
 func (d *peerMsgHandler) proposeRaftCommand(msg *raft_cmdpb.RaftCmdRequest, cb *message.Callback) {
 	err := d.preProposeRaftCommand(msg)
 	if err != nil {
@@ -123,6 +235,16 @@ func (d *peerMsgHandler) proposeRaftCommand(msg *raft_cmdpb.RaftCmdRequest, cb *
 		return
 	}
 	// Your Code Here (2B).
+	p := d.peer
+	pp := &proposal{
+		index: p.nextProposalIndex(),
+		term:  msg.Header.Term,
+		cb:    cb,
+	}
+	p.proposals = append(p.proposals, pp)
+
+	data, err := proto.Marshal(msg)
+	p.RaftGroup.Propose(data)
 }
 
 func (d *peerMsgHandler) onTick() {

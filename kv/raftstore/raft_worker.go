@@ -36,7 +36,7 @@ func (rw *raftWorker) run(closeCh <-chan struct{}, wg *sync.WaitGroup) {
 		select {
 		case <-closeCh:
 			return
-		case msg := <-rw.raftCh:
+		case msg := <-rw.raftCh: // get message from RaftStorage?
 			msgs = append(msgs, msg)
 		}
 		pending := len(rw.raftCh)
