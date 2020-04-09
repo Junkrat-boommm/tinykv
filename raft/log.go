@@ -105,7 +105,7 @@ func (l *RaftLog) getEntries(start, end uint64) []pb.Entry {
 func (l *RaftLog) unstableEntries() []pb.Entry {
 	// Your Code Here (2A).
 	offset := l.getOffset()
-	log.Infof("stabled: %v, offset: %v, len: %v", l.stabled, offset, len(l.entries))
+	// log.Infof("stabled: %v, offset: %v, len: %v", l.stabled, offset, len(l.entries))
 	if l.stabled+1-offset > (uint64)(len(l.entries)) {
 		return nil
 	} else {
@@ -117,7 +117,7 @@ func (l *RaftLog) unstableEntries() []pb.Entry {
 func (l *RaftLog) nextEnts() (ents []pb.Entry) {
 	// Your Code Here (2A).
 	offset := l.getOffset()
-	log.Infof("offset: %v, applied: %v, committed: %v, len: %v", offset, l.applied, l.committed, len(l.entries))
+	// log.Infof("offset: %v, applied: %v, committed: %v, len: %v", offset, l.applied, l.committed, len(l.entries))
 	if l.applied >= l.committed || l.committed+1-offset > (uint64)(len(l.entries)) || l.applied < offset-1 {
 		return nil
 	} else {
@@ -134,7 +134,8 @@ func (l *RaftLog) LastIndex() uint64 {
 	if l.pendingSnapshot != nil {
 		return l.pendingSnapshot.Metadata.Index
 	}
-	return 0
+	i, _ := l.storage.LastIndex()
+	return i
 }
 
 func (l *RaftLog) LastTerm() uint64 {
@@ -144,7 +145,8 @@ func (l *RaftLog) LastTerm() uint64 {
 	if l.pendingSnapshot != nil {
 		return l.pendingSnapshot.Metadata.Term
 	}
-	return 0
+	t, _ := l.storage.Term(l.LastIndex())
+	return t
 }
 
 // Term return the term of the entry in the given index
@@ -152,6 +154,9 @@ func (l *RaftLog) Term(i uint64) (uint64, error) {
 	// Your Code Here (2A).
 	if i == 0 {
 		return 0, nil
+	}
+	if i == l.LastIndex() {
+		return l.LastTerm(), nil
 	}
 	offset := l.getOffset()
 	if i < offset || i-offset+1 > uint64(len(l.entries)) {

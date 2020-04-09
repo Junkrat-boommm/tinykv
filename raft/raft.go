@@ -177,15 +177,22 @@ func newRaft(c *Config) *Raft {
 		electionTimeout:  c.ElectionTick,
 	}
 
-	snapShot, _ := c.Storage.Snapshot()
+	//snapShot, _ := c.Storage.Snapshot()
+	//if snapShot.GetMetadata() != nil {
+	//	if snapShot.Metadata.GetConfState() != nil {
+	//		for _, id := range snapShot.Metadata.ConfState.Nodes {
+	//			raft.Prs[id] = &Progress{Next: None, Match: None}
+	//		}
+	//	}
+	//}
 
-	hardState, _, _ := c.Storage.InitialState()
+	hardState, cf, _ := c.Storage.InitialState()
+
+	for _, i :=  range cf.Nodes {
+		raft.Prs[i] = &Progress{Next: None, Match: None}
+	}
 
 	raft.setHardState(hardState)
-
-	for _, id := range snapShot.Metadata.ConfState.Nodes {
-		raft.Prs[id] = &Progress{Next: None, Match: None}
-	}
 
 	for _, id := range c.peers {
 		if raft.Prs[id] == nil {
@@ -195,6 +202,7 @@ func newRaft(c *Config) *Raft {
 
 	raft.resetTimeout() // set a initial randomizedElectionTimeout
 
+	log.Infof("new raft: %v", raft)
 	return raft
 }
 
@@ -206,6 +214,7 @@ func (r *Raft) setHardState(hs pb.HardState) {
 	r.Vote = hs.Vote
 	r.RaftLog.committed = hs.Commit
 	r.Term = hs.Term
+	log.Infof("setHardState: %v, id: %v", hs, r.id)
 }
 
 func (r *Raft) lastIndex() uint64 {
@@ -229,8 +238,9 @@ func (r *Raft) sendAppend(to uint64) bool {
 	if prs := r.Prs[to]; prs != nil {
 		nextIndex := prs.Next
 		offset := r.RaftLog.getOffset()
+		log.Infof("offset: %v, nextIndex: %v, id: %v", offset, nextIndex, to)
 		if nextIndex < offset {
-			panic("need to send snapshot")
+			log.Panic("need to send snapshot")
 			return false
 		}
 		if nextIndex > r.lastIndex() {
@@ -245,7 +255,7 @@ func (r *Raft) sendAppend(to uint64) bool {
 		logTerm, _ := r.RaftLog.Term(nextIndex - 1)
 		// note: Index should be prevlogIndex
 		r.Send(pb.Message{To: to, MsgType: pb.MessageType_MsgAppend, Index: nextIndex - 1, LogTerm: logTerm, Commit: r.RaftLog.committed, Entries: entries})
-		log.Infof("[sendAppend] from: %v, to: %v, entries: %v, len: %v, data: %v, lastterm: %v Commit: %v", r.id, to, entries, len(entries), entries[0].Data, r.lastTerm(), r.RaftLog.committed)
+		// log.Infof("[sendAppend] from: %v, to: %v, entries: %v, len: %v, data: %v, lastterm: %v Commit: %v", r.id, to, entries, len(entries), entries[0].Data, r.lastTerm(), r.RaftLog.committed)
 	} else {
 		return false
 	}
@@ -284,16 +294,17 @@ func (r *Raft) tick() {
 
 func (r *Raft) tickElection() {
 	r.electionElapsed++
+	// log.Infof("peer: %v, r.electionElapsed: %v, r.randomizedElectionTimeout: %v", r.id, r.electionElapsed, r.randomizedElectionTimeout)
 	if r.electionElapsed >= r.randomizedElectionTimeout {
 		r.electionElapsed = 0
-		r.Step(pb.Message{MsgType: pb.MessageType_MsgHup})
+		r.Step(pb.Message{MsgType: pb.MessageType_MsgHup, Term: r.Term})
 	}
 }
 
 func (r *Raft) tickHeartbeat() {
 	r.heartbeatElapsed++
 	if r.heartbeatElapsed >= r.heartbeatTimeout {
-		r.Step(pb.Message{MsgType: pb.MessageType_MsgBeat})
+		r.Step(pb.Message{MsgType: pb.MessageType_MsgBeat, Term: r.Term})
 	}
 }
 
@@ -355,6 +366,7 @@ func (r *Raft) bcastRequestvote() {
 		r.becomeLeader()
 		return
 	}
+	log.Infof("len: %v", len(r.Prs))
 	for i, _ := range r.Prs {
 		if i != r.id {
 			r.sendRequestVote(i)
@@ -398,7 +410,7 @@ func (r *Raft) Send(m pb.Message) {
 	m.From = r.id
 	m.Term = r.Term
 	r.msgs = append(r.msgs, m)
-	log.Infof("[send] %v", m)
+	// log.Infof("[send] %v", m)
 }
 
 // Determine if the log is updated
@@ -414,7 +426,7 @@ func (r *Raft) IsUpdated(m pb.Message) bool {
 func (r *Raft) Step(m pb.Message) error {
 	// Your Code Here (2A).
 	// Check Message's term
-	log.Infof("[step %v] from: %v, to: %v, m.Term: %v, r.Term: %v, lastIndex: %v", m.MsgType, m.From, r.id, m.Term, r.Term, m.Index)
+	// log.Infof("[step %v] from: %v, to: %v, m.Term: %v, r.Term: %v, lastIndex: %v", m.MsgType, m.From, r.id, m.Term, r.Term, m.Index)
 	if m.Term < r.Term {
 		switch m.MsgType {
 		case pb.MessageType_MsgRequestVote:

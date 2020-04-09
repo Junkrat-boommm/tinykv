@@ -189,11 +189,13 @@ func GenericTest(t *testing.T, part string, nclients int, unreliable bool, crash
 	}
 	cluster := NewTestCluster(nservers, cfg)
 	cluster.Start()
+	log.Infof("cluster start")
 	defer cluster.Shutdown()
 
 	electionTimeout := cfg.RaftBaseTickInterval * time.Duration(cfg.RaftElectionTimeoutTicks)
 	// Wait for leader election
 	time.Sleep(2 * electionTimeout)
+	log.Infof("Waited for leader election")
 
 	done_partitioner := int32(0)
 	done_confchanger := int32(0)
@@ -207,6 +209,7 @@ func GenericTest(t *testing.T, part string, nclients int, unreliable bool, crash
 	}
 	for i := 0; i < 3; i++ {
 		// log.Printf("Iteration %v\n", i)
+		log.Infof("Iteration %v\n", i)
 		atomic.StoreInt32(&done_clients, 0)
 		atomic.StoreInt32(&done_partitioner, 0)
 		go SpawnClientsAndWait(t, ch_clients, nclients, func(cli int, t *testing.T) {
@@ -219,14 +222,14 @@ func GenericTest(t *testing.T, part string, nclients int, unreliable bool, crash
 				if (rand.Int() % 1000) < 500 {
 					key := strconv.Itoa(cli) + " " + fmt.Sprintf("%08d", j)
 					value := "x " + strconv.Itoa(cli) + " " + strconv.Itoa(j) + " y"
-					// log.Infof("%d: client new put %v,%v\n", cli, key, value)
+					log.Infof("%d: client new put %v,%v\n", cli, key, value)
 					cluster.MustPut([]byte(key), []byte(value))
 					last = NextValue(last, value)
 					j++
 				} else {
 					start := strconv.Itoa(cli) + " " + fmt.Sprintf("%08d", 0)
 					end := strconv.Itoa(cli) + " " + fmt.Sprintf("%08d", j)
-					// log.Infof("%d: client new scan %v-%v\n", cli, start, end)
+					log.Infof("%d: client new scan %v-%v\n", cli, start, end)
 					values := cluster.Scan([]byte(start), []byte(end))
 					v := string(bytes.Join(values, []byte("")))
 					if v != last {

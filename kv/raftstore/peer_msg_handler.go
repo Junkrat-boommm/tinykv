@@ -2,6 +2,7 @@ package raftstore
 
 import (
 	"fmt"
+	"github.com/pingcap-incubator/tinykv/kv/raftstore/meta"
 	"github.com/pingcap-incubator/tinykv/kv/util/engine_util"
 	"github.com/pingcap-incubator/tinykv/proto/_tools/src/github.com/gogo/protobuf/proto"
 	"github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
@@ -48,11 +49,11 @@ func (d *peerMsgHandler) HandleRaftReady() {
 	// Your Code Here (2B).
 	// get the ready from Raft
 	p := d.peer
-	if p.RaftGroup.HasReady() {
+	if !p.RaftGroup.HasReady() {
 		return
 	}
 	rd := p.RaftGroup.Ready()
-
+	// log.Infof("id: %v, HandleRaftReady: %v", d.peer.Meta.Id, rd)
 	// persisting log entries
 	p.peerStorage.SaveReadyState(&rd)
 
@@ -89,12 +90,30 @@ func (d *peerMsgHandler) process(e eraftpb.Entry) {
 
 		// The server should not complete a get RPC if it is not part of a majority and do not has up-to-date data.
 		case raft_cmdpb.CmdType_Get:
-			log.Panic("process CmdType_Get, where is it from")
+			// log.Panic("process CmdType_Get, where is it from")
 			if p.IsLeader() {
 				// _ := req.Get
+				get := req.GetGet()
+				if get == nil {
+					log.Panic("get request is nil")
+				}
+				cf := get.GetCf()
+				k := get.GetKey()
+				// txn := p.peerStorage.Engines.Kv.NewTransaction(false)
+				v, err := engine_util.GetCF(p.peerStorage.Engines.Kv, cf, k)
+				if err != nil {
+					log.Panic("getCF error")
+				}
+				resps = append(resps, &raft_cmdpb.Response{
+					CmdType: raft_cmdpb.CmdType_Get,
+					Get:     &raft_cmdpb.GetResponse{
+						Value: v,
+					},
+				})
 			}
 		case raft_cmdpb.CmdType_Put:
 			put := req.GetPut()
+			log.Infof("id: %v process msg: %v", p.Meta.Id, put)
 			if put == nil {
 				log.Panic("put request is nil")
 			}
@@ -124,13 +143,21 @@ func (d *peerMsgHandler) process(e eraftpb.Entry) {
 			})
 		case raft_cmdpb.CmdType_Snap:
 			// snap := req.GetSnap()
+			// should determine if it's a leader?
 			resps = append(resps, &raft_cmdpb.Response{
 				CmdType: raft_cmdpb.CmdType_Snap,
 				Snap:    &raft_cmdpb.SnapResponse{Region: p.Region()},
 			})
 		}
 	}
+
+	kvWB.SetMeta(meta.ApplyStateKey(p.regionId), &rspb.RaftApplyState{AppliedIndex: e.GetIndex()})
+
 	kvWB.MustWriteToDB(p.peerStorage.Engines.Kv)
+
+	if !p.IsLeader() {	// don't need to reply
+		return
+	}
 
 	header := &raft_cmdpb.RaftResponseHeader{
 		Error:       nil,
@@ -152,17 +179,18 @@ func (d *peerMsgHandler) process(e eraftpb.Entry) {
 		if proposal.term == e.Term && proposal.index == e.Index {
 			cb = proposal.cb
 			p.proposals = append(p.proposals[0:i], p.proposals[i+1:]...) // delete this cb
+			break
 		}
 	}
 	if cb == nil {
 		log.Panic("cannot find the cb")
 	}
+
 	if len(resps) == 1 && resps[0].CmdType == raft_cmdpb.CmdType_Snap {
 		cb.Txn = p.peerStorage.Engines.Kv.NewTransaction(false) // not sure
 	}
 
 	cb.Done(response)
-
 }
 
 func (d *peerMsgHandler) HandleMsg(msg message.Msg) {
@@ -173,6 +201,7 @@ func (d *peerMsgHandler) HandleMsg(msg message.Msg) {
 			log.Errorf("%s handle raft message error %v", d.Tag, err)
 		}
 	case message.MsgTypeRaftCmd:
+		// log.Infof("id: %v, message.MsgTypeRaftCmd: %v", d.peer.Meta.Id, msg)
 		raftCMD := msg.Data.(*message.MsgRaftCmd)
 		d.proposeRaftCommand(raftCMD.Request, raftCMD.Callback)
 	case message.MsgTypeTick:
@@ -227,7 +256,7 @@ func (d *peerMsgHandler) preProposeRaftCommand(req *raft_cmdpb.RaftCmdRequest) e
 	return err
 }
 
-//  proposeRaftCommand proposeS the raft command to Raft module
+//  proposeRaftCommand proposes the raft command to Raft module
 func (d *peerMsgHandler) proposeRaftCommand(msg *raft_cmdpb.RaftCmdRequest, cb *message.Callback) {
 	err := d.preProposeRaftCommand(msg)
 	if err != nil {
@@ -236,13 +265,16 @@ func (d *peerMsgHandler) proposeRaftCommand(msg *raft_cmdpb.RaftCmdRequest, cb *
 	}
 	// Your Code Here (2B).
 	p := d.peer
+	if !p.IsLeader(){
+		return
+	}
 	pp := &proposal{
 		index: p.nextProposalIndex(),
-		term:  msg.Header.Term,
+		term:  p.Term(),
 		cb:    cb,
 	}
 	p.proposals = append(p.proposals, pp)
-
+	log.Infof("record pp: %v", pp)
 	data, err := proto.Marshal(msg)
 	p.RaftGroup.Propose(data)
 }
