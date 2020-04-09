@@ -66,6 +66,12 @@ lab2ab:
 lab2ac:
 	go test -count=1 ./raft -run 2AC
 
+lab2aa:
+	go test -count=1 ./raft -run 2AA
+
+lab2ab:
+	go test -count=1 ./raft -run 2AB
+
 lab2b:
 	go test -count=1 ./kv/test_raftstore -run 2B
 
